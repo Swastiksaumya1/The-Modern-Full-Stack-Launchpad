@@ -1,13 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  LayoutGrid, CheckSquare, Clock, Settings, Wifi, Volume2, Battery, User,
+  LayoutGrid, CheckSquare, Clock, Settings, Wifi, Volume2, Battery,
   Timer, Play, Pause, RotateCcw, Plus, Check, Trash2, Maximize2, Flag,
   X, Cloud, Sun, Moon, Sunrise, Sunset, CloudRain, Wind, Music,
   Calendar, StickyNote, BarChart3, Thermometer, MapPin,
   Calculator, Link, Quote, Zap, Target, TrendingUp,
-  CloudSun, Snowflake, CloudLightning, LogOut
+  CloudSun, Snowflake, CloudLightning, LogOut, CloudOff, RefreshCw
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { loadUserData, syncTasks, syncNotes, syncHabits, syncPreferences, syncFocusSessions, syncQuickLinks } from '../../lib/firestore'
 
 // ============================================================================
 // TYPES
@@ -67,6 +68,22 @@ const getWeatherIcon = (condition: string) => {
   return Sun
 }
 
+// Avatar options - 12 character avatars
+const AVATARS = [
+  { id: 'astronaut', emoji: '👨‍🚀', label: 'Astronaut' },
+  { id: 'ninja', emoji: '🥷', label: 'Ninja' },
+  { id: 'wizard', emoji: '🧙', label: 'Wizard' },
+  { id: 'robot', emoji: '🤖', label: 'Robot' },
+  { id: 'alien', emoji: '👽', label: 'Alien' },
+  { id: 'superhero', emoji: '🦸', label: 'Superhero' },
+  { id: 'detective', emoji: '🕵️', label: 'Detective' },
+  { id: 'artist', emoji: '👨‍🎨', label: 'Artist' },
+  { id: 'scientist', emoji: '👨‍🔬', label: 'Scientist' },
+  { id: 'chef', emoji: '👨‍🍳', label: 'Chef' },
+  { id: 'pilot', emoji: '👨‍✈️', label: 'Pilot' },
+  { id: 'rockstar', emoji: '🎸', label: 'Rockstar' },
+]
+
 export default function Dashboard() {
   // ============================================================================
   // AUTH
@@ -76,7 +93,8 @@ export default function Dashboard() {
   // ============================================================================
   // CORE STATE
   // ============================================================================
-  const [userName, setUserName] = useState(() => localStorage.getItem('focus-user-name') || currentUser?.displayName || 'User')
+  // Use Firebase displayName as the primary source, fallback to localStorage
+  const [userName] = useState(() => currentUser?.displayName || localStorage.getItem('focus-user-name') || 'User')
   const [city, setCity] = useState(() => localStorage.getItem('focus-city') || 'New Delhi')
   const [time, setTime] = useState(new Date())
   const [showSettings, setShowSettings] = useState(false)
@@ -85,10 +103,24 @@ export default function Dashboard() {
   const [isAnimating, setIsAnimating] = useState(false)
   const [wallpaper, setWallpaper] = useState(() => localStorage.getItem('focus-wallpaper') || 'dynamic')
   const [accentColor, setAccentColor] = useState(() => localStorage.getItem('focus-accent') || 'blue')
+  const [selectedAvatar, setSelectedAvatar] = useState(() => localStorage.getItem('focus-avatar') || 'astronaut')
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+  const [clockStyle, setClockStyle] = useState(() => localStorage.getItem('focus-clock-style') || 'digital')
+  const [clockFormat, setClockFormat] = useState(() => localStorage.getItem('focus-clock-format') || '12')
+  const [citySuggestions, setCitySuggestions] = useState<{name: string, country: string, lat: number, lon: number}[]>([])
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false)
+  const [citySearchTimeout, setCitySearchTimeout] = useState<number | null>(null)
 
-  // Real Weather State
+  // Cloud Sync State
+  const [cloudSyncing, setCloudSyncing] = useState(false)
+  const [cloudError, setCloudError] = useState(false)
+  const dataLoadedRef = useRef(false)
+
+  // Real Weather State (extended with sunrise/sunset and more)
   const [weather, setWeather] = useState({
-    temp: 24, condition: 'Loading...', icon: Sun, humidity: 45, wind: 12, feelsLike: 24, description: ''
+    temp: 24, condition: 'Loading...', icon: Sun, humidity: 45, wind: 12, feelsLike: 24, description: '',
+    sunrise: '', sunset: '', uvIndex: 0, visibility: 10, pressure: 1013, windDirection: 0, precipitation: 0,
+    cityName: '', country: '', timezone: ''
   })
   const [weatherLoading, setWeatherLoading] = useState(true)
 
@@ -181,25 +213,36 @@ export default function Dashboard() {
   // ============================================================================
   const accent = ACCENT_COLORS.find(c => c.id === accentColor) || ACCENT_COLORS[0]
 
-  // Fetch real weather data
+  // Fetch real weather data with extended info
   useEffect(() => {
     const fetchWeather = async () => {
       try {
         setWeatherLoading(true)
-        // Using Open-Meteo API (free, no API key required)
+        // Get city coordinates first
         const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`)
         const geoData = await geoRes.json()
 
         if (geoData.results && geoData.results.length > 0) {
-          const { latitude, longitude } = geoData.results[0]
+          const { latitude, longitude, name, country, timezone } = geoData.results[0]
+
+          // Fetch comprehensive weather data
           const weatherRes = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`
+            `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,precipitation&daily=sunrise,sunset,uv_index_max&timezone=auto`
           )
           const weatherData = await weatherRes.json()
 
           if (weatherData.current) {
             const weatherCode = weatherData.current.weather_code
             const condition = getWeatherCondition(weatherCode)
+
+            // Format sunrise/sunset times
+            const sunrise = weatherData.daily?.sunrise?.[0]
+              ? new Date(weatherData.daily.sunrise[0]).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+              : '6:00 AM'
+            const sunset = weatherData.daily?.sunset?.[0]
+              ? new Date(weatherData.daily.sunset[0]).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+              : '6:00 PM'
+
             setWeather({
               temp: Math.round(weatherData.current.temperature_2m),
               condition,
@@ -207,20 +250,34 @@ export default function Dashboard() {
               humidity: weatherData.current.relative_humidity_2m,
               wind: Math.round(weatherData.current.wind_speed_10m),
               feelsLike: Math.round(weatherData.current.apparent_temperature),
-              description: condition
+              description: condition,
+              sunrise,
+              sunset,
+              uvIndex: weatherData.daily?.uv_index_max?.[0] || 0,
+              visibility: 10,
+              pressure: Math.round(weatherData.current.surface_pressure || 1013),
+              windDirection: weatherData.current.wind_direction_10m || 0,
+              precipitation: weatherData.current.precipitation || 0,
+              cityName: name,
+              country: country,
+              timezone: timezone || 'UTC'
             })
           }
         }
       } catch (error) {
         console.error('Weather fetch error:', error)
-        setWeather({ temp: 24, condition: 'Clear', icon: Sun, humidity: 45, wind: 12, feelsLike: 24, description: 'Clear sky' })
+        setWeather({
+          temp: 24, condition: 'Clear', icon: Sun, humidity: 45, wind: 12, feelsLike: 24, description: 'Clear sky',
+          sunrise: '6:00 AM', sunset: '6:00 PM', uvIndex: 5, visibility: 10, pressure: 1013, windDirection: 0,
+          precipitation: 0, cityName: city, country: '', timezone: 'UTC'
+        })
       } finally {
         setWeatherLoading(false)
       }
     }
 
     fetchWeather()
-    const interval = setInterval(fetchWeather, 600000) // Refresh every 10 minutes
+    const interval = setInterval(fetchWeather, 300000) // Refresh every 5 minutes for real-time feel
     return () => clearInterval(interval)
   }, [city])
 
@@ -246,8 +303,117 @@ export default function Dashboard() {
   useEffect(() => { localStorage.setItem('focus-wallpaper', wallpaper) }, [wallpaper])
   useEffect(() => { localStorage.setItem('focus-sessions', String(focusSessions)) }, [focusSessions])
   useEffect(() => { localStorage.setItem('focus-accent', accentColor) }, [accentColor])
+  useEffect(() => { localStorage.setItem('focus-avatar', selectedAvatar) }, [selectedAvatar])
+  useEffect(() => { localStorage.setItem('focus-clock-style', clockStyle) }, [clockStyle])
+  useEffect(() => { localStorage.setItem('focus-clock-format', clockFormat) }, [clockFormat])
   useEffect(() => { localStorage.setItem('focus-habits', JSON.stringify(habits)) }, [habits])
   useEffect(() => { localStorage.setItem('focus-links', JSON.stringify(quickLinks)) }, [quickLinks])
+
+  // ============================================================================
+  // CLOUD SYNC - Load data from Firestore on mount
+  // ============================================================================
+  useEffect(() => {
+    const loadCloudData = async () => {
+      if (!currentUser?.uid || dataLoadedRef.current) return
+
+      try {
+        setCloudError(false)
+        const cloudData = await loadUserData(currentUser.uid)
+
+        if (cloudData) {
+          dataLoadedRef.current = true
+          // Load tasks
+          if (cloudData.tasks && cloudData.tasks.length > 0) {
+            setTasks(cloudData.tasks.map(t => ({ ...t, priority: t.priority || 'medium' })))
+          }
+          // Load notes - handle both string and array formats
+          if (cloudData.notes) {
+            if (typeof cloudData.notes === 'string') {
+              setNotes([{ id: '1', text: cloudData.notes, color: '#fbbf24' }])
+            }
+          }
+          // Load habits
+          if (cloudData.habits && cloudData.habits.length > 0) {
+            setHabits(cloudData.habits.map(h => ({
+              id: h.id,
+              name: h.name,
+              icon: '⭐',
+              streak: 0,
+              completedToday: h.completed
+            })))
+          }
+          // Load quick links
+          if (cloudData.quickLinks && cloudData.quickLinks.length > 0) {
+            setQuickLinks(cloudData.quickLinks.map(l => ({ ...l, color: '#4285f4' })))
+          }
+          // Load preferences
+          if (cloudData.preferences) {
+            if (cloudData.preferences.wallpaper) setWallpaper(cloudData.preferences.wallpaper)
+            if (cloudData.preferences.accentColor) setAccentColor(cloudData.preferences.accentColor)
+            if (cloudData.preferences.avatar) setSelectedAvatar(cloudData.preferences.avatar)
+            if (cloudData.preferences.city) setCity(cloudData.preferences.city)
+          }
+          // Load focus sessions
+          if (cloudData.focusSessions) setFocusSessions(cloudData.focusSessions)
+        }
+      } catch (error) {
+        console.error('Cloud load error:', error)
+        setCloudError(true)
+      }
+    }
+
+    loadCloudData()
+  }, [currentUser?.uid])
+
+  // ============================================================================
+  // CLOUD SYNC - Sync data to Firestore when changed (debounced)
+  // ============================================================================
+  useEffect(() => {
+    if (!currentUser?.uid || !dataLoadedRef.current) return
+    const timer = setTimeout(() => {
+      setCloudSyncing(true)
+      syncTasks(currentUser.uid, tasks.map(t => ({ id: t.id, text: t.text, completed: t.completed, priority: t.priority || 'medium' })))
+        .finally(() => setCloudSyncing(false))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [tasks, currentUser?.uid])
+
+  useEffect(() => {
+    if (!currentUser?.uid || !dataLoadedRef.current) return
+    const timer = setTimeout(() => {
+      syncNotes(currentUser.uid, notes.map(n => n.text).join('\n'))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [notes, currentUser?.uid])
+
+  useEffect(() => {
+    if (!currentUser?.uid || !dataLoadedRef.current) return
+    const timer = setTimeout(() => {
+      syncHabits(currentUser.uid, habits.map(h => ({ id: h.id, name: h.name, completed: h.completedToday })))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [habits, currentUser?.uid])
+
+  useEffect(() => {
+    if (!currentUser?.uid || !dataLoadedRef.current) return
+    const timer = setTimeout(() => {
+      syncQuickLinks(currentUser.uid, quickLinks.map(l => ({ id: l.id, name: l.name, url: l.url })))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [quickLinks, currentUser?.uid])
+
+  useEffect(() => {
+    if (!currentUser?.uid || !dataLoadedRef.current) return
+    const timer = setTimeout(() => {
+      syncPreferences(currentUser.uid, { wallpaper, accentColor, avatar: selectedAvatar, city })
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [wallpaper, accentColor, selectedAvatar, city, currentUser?.uid])
+
+  useEffect(() => {
+    if (!currentUser?.uid || !dataLoadedRef.current) return
+    syncFocusSessions(currentUser.uid, focusSessions)
+  }, [focusSessions, currentUser?.uid])
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000)
@@ -283,6 +449,11 @@ export default function Dashboard() {
   }
 
   const formatTime12 = () => {
+    if (clockFormat === '24') {
+      const hours = String(time.getHours()).padStart(2, '0')
+      const mins = String(time.getMinutes()).padStart(2, '0')
+      return `${hours}:${mins}`
+    }
     const hours = time.getHours() % 12 || 12
     const mins = String(time.getMinutes()).padStart(2, '0')
     const ampm = time.getHours() >= 12 ? 'PM' : 'AM'
@@ -290,6 +461,42 @@ export default function Dashboard() {
   }
 
   const formatDate = () => time.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase()
+
+  // Search cities for autocomplete
+  const searchCities = async (query: string) => {
+    if (query.length < 2) {
+      setCitySuggestions([])
+      return
+    }
+    try {
+      const res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en`)
+      const data = await res.json()
+      if (data.results) {
+        setCitySuggestions(data.results.map((r: { name: string; country: string; latitude: number; longitude: number }) => ({
+          name: r.name,
+          country: r.country,
+          lat: r.latitude,
+          lon: r.longitude
+        })))
+        setShowCitySuggestions(true)
+      }
+    } catch (error) {
+      console.error('City search error:', error)
+    }
+  }
+
+  const handleCityInput = (value: string) => {
+    setCity(value)
+    if (citySearchTimeout) clearTimeout(citySearchTimeout)
+    const timeout = window.setTimeout(() => searchCities(value), 300)
+    setCitySearchTimeout(timeout)
+  }
+
+  const selectCity = (cityName: string, country: string) => {
+    setCity(`${cityName}, ${country}`)
+    setCitySuggestions([])
+    setShowCitySuggestions(false)
+  }
 
   const pendingTasks = tasks.filter(t => !t.completed).length
 
@@ -429,11 +636,92 @@ export default function Dashboard() {
         <div onClick={e => e.stopPropagation()} style={{ position: 'relative', maxWidth: '95vw', maxHeight: '90vh' }}>
           {closeBtn}
           {fullscreenWidget === 'clock' && (
-            <div style={{ ...panelStyle, padding: 60, textAlign: 'center', minWidth: 500 }}>
-              <div style={{ fontSize: 140, fontWeight: 200, letterSpacing: -8, background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1 }}>{formatTime12()}</div>
-              <div style={{ fontSize: 28, letterSpacing: 6, color: 'rgba(255,255,255,0.4)', marginTop: 16, fontWeight: 300 }}>{formatDate()}</div>
+            <div style={{ ...panelStyle, padding: 50, textAlign: 'center', minWidth: 750, minHeight: 550, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              {/* Clock Style Selector */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginBottom: 40 }}>
+                {['digital', 'analog', 'minimal', 'flip', 'binary'].map(style => (
+                  <button key={style} onClick={() => setClockStyle(style)} style={{ padding: '10px 20px', background: clockStyle === style ? accent.primary : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.2s' }}>{style}</button>
+                ))}
+              </div>
+
+              {/* Digital Clock */}
+              {clockStyle === 'digital' && (
+                <div>
+                  <div style={{ fontSize: 160, fontWeight: 100, letterSpacing: -8, background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1, fontFamily: 'monospace' }}>{formatTime12()}</div>
+                  <div style={{ fontSize: 32, letterSpacing: 8, color: 'rgba(255,255,255,0.4)', marginTop: 20, fontWeight: 300 }}>{formatDate()}</div>
+                </div>
+              )}
+
+              {/* Analog Clock - Enhanced with hour numbers */}
+              {clockStyle === 'analog' && (
+                <div style={{ position: 'relative' }}>
+                  <div style={{ width: 340, height: 340, borderRadius: '50%', border: `4px solid ${accent.primary}`, margin: '0 auto', position: 'relative', background: 'radial-gradient(circle, rgba(30,30,50,0.9) 0%, rgba(10,10,20,0.95) 100%)', boxShadow: `0 0 60px ${accent.primary}30, inset 0 0 60px rgba(0,0,0,0.5)` }}>
+                    {/* Hour Numbers */}
+                    {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((num, i) => {
+                      const angle = (i * 30 - 90) * (Math.PI / 180)
+                      const radius = 130
+                      const x = Math.cos(angle) * radius
+                      const y = Math.sin(angle) * radius
+                      return (
+                        <div key={num} style={{ position: 'absolute', top: '50%', left: '50%', transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`, fontSize: 22, fontWeight: 600, color: num % 3 === 0 ? accent.primary : 'rgba(255,255,255,0.8)' }}>{num}</div>
+                      )
+                    })}
+                    {/* Minute markers */}
+                    {[...Array(60)].map((_, i) => (
+                      <div key={i} style={{ position: 'absolute', top: '50%', left: '50%', width: i % 5 === 0 ? 3 : 1, height: i % 5 === 0 ? 12 : 6, background: i % 5 === 0 ? 'white' : 'rgba(255,255,255,0.3)', borderRadius: 2, transformOrigin: '50% 0', transform: `translate(-50%, -165px) rotate(${i * 6}deg)` }} />
+                    ))}
+                    {/* Hour hand */}
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 8, height: 85, background: 'linear-gradient(to top, white, rgba(255,255,255,0.8))', borderRadius: 6, transformOrigin: '50% 100%', transform: `translate(-50%, -100%) rotate(${(time.getHours() % 12) * 30 + time.getMinutes() * 0.5}deg)`, boxShadow: '0 2px 10px rgba(0,0,0,0.5)' }} />
+                    {/* Minute hand */}
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 5, height: 120, background: `linear-gradient(to top, ${accent.primary}, ${accent.secondary})`, borderRadius: 4, transformOrigin: '50% 100%', transform: `translate(-50%, -100%) rotate(${time.getMinutes() * 6}deg)`, boxShadow: `0 2px 10px ${accent.primary}50` }} />
+                    {/* Second hand */}
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 2, height: 140, background: '#ef4444', borderRadius: 4, transformOrigin: '50% 100%', transform: `translate(-50%, -100%) rotate(${time.getSeconds() * 6}deg)` }} />
+                    {/* Center dot */}
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', width: 20, height: 20, background: accent.primary, borderRadius: '50%', transform: 'translate(-50%, -50%)', boxShadow: `0 0 20px ${accent.primary}` }} />
+                  </div>
+                  {/* Digital time below analog */}
+                  <div style={{ marginTop: 24, fontSize: 20, color: 'rgba(255,255,255,0.6)', fontFamily: 'monospace' }}>{formatTime12()}</div>
+                </div>
+              )}
+
+              {/* Minimal Clock */}
+              {clockStyle === 'minimal' && (
+                <div>
+                  <div style={{ fontSize: 200, fontWeight: 100, color: 'white', lineHeight: 1, letterSpacing: -10 }}>{clockFormat === '24' ? String(time.getHours()).padStart(2, '0') : String(time.getHours() % 12 || 12).padStart(2, '0')}</div>
+                  <div style={{ fontSize: 200, fontWeight: 100, color: accent.primary, lineHeight: 1, letterSpacing: -10, marginTop: -20 }}>{String(time.getMinutes()).padStart(2, '0')}</div>
+                  {clockFormat === '12' && <div style={{ fontSize: 32, color: 'rgba(255,255,255,0.4)', marginTop: 10 }}>{time.getHours() >= 12 ? 'PM' : 'AM'}</div>}
+                </div>
+              )}
+
+              {/* Flip Clock */}
+              {clockStyle === 'flip' && (
+                <div style={{ display: 'flex', gap: 20, justifyContent: 'center', alignItems: 'center' }}>
+                  {[String(clockFormat === '24' ? time.getHours() : (time.getHours() % 12 || 12)).padStart(2, '0').split(''), String(time.getMinutes()).padStart(2, '0').split(''), String(time.getSeconds()).padStart(2, '0').split('')].flat().map((digit, i) => (
+                    <div key={i} style={{ width: 80, height: 120, background: 'linear-gradient(180deg, #1a1a2e 0%, #1a1a2e 49%, #0a0a14 50%, #0a0a14 100%)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 72, fontWeight: 700, fontFamily: 'monospace', color: i >= 4 ? accent.primary : 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', position: 'relative' }}>
+                      {digit}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Binary Clock */}
+              {clockStyle === 'binary' && (
+                <div style={{ display: 'flex', gap: 30, justifyContent: 'center' }}>
+                  {[clockFormat === '24' ? time.getHours() : (time.getHours() % 12 || 12), time.getMinutes(), time.getSeconds()].map((val, col) => (
+                    <div key={col} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                      <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>{['HRS', 'MIN', 'SEC'][col]}</div>
+                      {[...Array(6)].map((_, row) => (
+                        <div key={row} style={{ width: 40, height: 40, borderRadius: 8, background: (val >> (5 - row)) & 1 ? accent.primary : 'rgba(255,255,255,0.1)', boxShadow: (val >> (5 - row)) & 1 ? `0 0 20px ${accent.primary}` : 'none', transition: 'all 0.2s' }} />
+                      ))}
+                      <div style={{ fontSize: 24, fontWeight: 600, marginTop: 8 }}>{String(val).padStart(2, '0')}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Weather & Location Footer */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 40, padding: '20px 32px', background: 'rgba(255,255,255,0.05)', borderRadius: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><MapPin size={22} style={{ color: accent.primary }} /><span style={{ fontSize: 20 }}>{city}</span></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><MapPin size={22} style={{ color: accent.primary }} /><span style={{ fontSize: 20 }}>{weather.cityName || city}</span></div>
                 <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.2)' }} />
                 {weatherLoading ? <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.5)' }}>Loading...</span> : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><weather.icon size={26} style={{ color: '#fbbf24' }} /><span style={{ fontSize: 22, fontWeight: 500 }}>{weather.temp}°C</span></div>
@@ -483,19 +771,94 @@ export default function Dashboard() {
             </div>
           )}
           {fullscreenWidget === 'weather' && (
-            <div style={{ ...panelStyle, padding: 48, textAlign: 'center', minWidth: 400 }}>
-              {weatherLoading ? <div style={{ fontSize: 24, color: 'rgba(255,255,255,0.5)' }}>Loading weather...</div> : (
-                <>
-                  <weather.icon size={100} style={{ color: '#fbbf24', marginBottom: 20 }} />
-                  <div style={{ fontSize: 90, fontWeight: 200, lineHeight: 1 }}>{weather.temp}°</div>
-                  <div style={{ fontSize: 28, color: 'rgba(255,255,255,0.6)', marginTop: 8 }}>{weather.condition}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 16 }}><MapPin size={18} style={{ color: accent.primary }} /><span style={{ fontSize: 20 }}>{city}</span></div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20, marginTop: 32, padding: 20, background: 'rgba(255,255,255,0.03)', borderRadius: 20 }}>
-                    <div><Thermometer size={24} style={{ color: '#f472b6' }} /><div style={{ fontSize: 22, marginTop: 8 }}>{weather.feelsLike}°</div><div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Feels Like</div></div>
-                    <div><Cloud size={24} style={{ color: '#60a5fa' }} /><div style={{ fontSize: 22, marginTop: 8 }}>{weather.humidity}%</div><div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Humidity</div></div>
-                    <div><Wind size={24} style={{ color: '#22d3ee' }} /><div style={{ fontSize: 22, marginTop: 8 }}>{weather.wind}km/h</div><div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Wind</div></div>
+            <div style={{ ...panelStyle, padding: 0, minWidth: 800, maxWidth: 900, minHeight: 600, overflow: 'hidden' }}>
+              {weatherLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 500 }}>
+                  <RefreshCw size={48} style={{ color: accent.primary, animation: 'spin 1s linear infinite' }} />
+                  <div style={{ fontSize: 20, color: 'rgba(255,255,255,0.5)', marginTop: 20 }}>Fetching weather data...</div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  {/* Header with location */}
+                  <div style={{ padding: '24px 32px', background: `linear-gradient(135deg, ${accent.primary}20, ${accent.secondary}20)`, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <MapPin size={24} style={{ color: accent.primary }} />
+                        <div>
+                          <div style={{ fontSize: 22, fontWeight: 600 }}>{weather.cityName || city.split(',')[0]}</div>
+                          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{weather.country || city.split(',')[1] || ''}</div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                        <div>Last updated</div>
+                        <div style={{ color: 'rgba(255,255,255,0.7)' }}>{new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+                      </div>
+                    </div>
                   </div>
-                </>
+
+                  {/* Main weather display */}
+                  <div style={{ padding: '40px 32px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 40 }}>
+                    <weather.icon size={120} style={{ color: '#fbbf24' }} />
+                    <div>
+                      <div style={{ fontSize: 96, fontWeight: 200, lineHeight: 1, background: `linear-gradient(135deg, white, ${accent.primary})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{weather.temp}°</div>
+                      <div style={{ fontSize: 28, color: 'rgba(255,255,255,0.7)', marginTop: 4 }}>{weather.condition}</div>
+                      <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.5)', marginTop: 8 }}>Feels like {weather.feelsLike}°C</div>
+                    </div>
+                  </div>
+
+                  {/* Sunrise & Sunset */}
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 60, padding: '20px 32px', background: 'rgba(255,255,255,0.03)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #fbbf24, #f59e0b)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Sunrise size={28} style={{ color: 'white' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>Sunrise</div>
+                        <div style={{ fontSize: 22, fontWeight: 600 }}>{weather.sunrise}</div>
+                      </div>
+                    </div>
+                    <div style={{ width: 1, background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #f97316, #dc2626)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Sunset size={28} style={{ color: 'white' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: 1 }}>Sunset</div>
+                        <div style={{ fontSize: 22, fontWeight: 600 }}>{weather.sunset}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Weather details grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: 'rgba(255,255,255,0.05)', margin: '24px 32px', borderRadius: 20, overflow: 'hidden' }}>
+                    <div style={{ padding: 24, background: 'rgba(20,20,35,0.8)', textAlign: 'center' }}>
+                      <Cloud size={28} style={{ color: '#60a5fa', marginBottom: 12 }} />
+                      <div style={{ fontSize: 24, fontWeight: 600 }}>{weather.humidity}%</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>Humidity</div>
+                    </div>
+                    <div style={{ padding: 24, background: 'rgba(20,20,35,0.8)', textAlign: 'center' }}>
+                      <Wind size={28} style={{ color: '#22d3ee', marginBottom: 12 }} />
+                      <div style={{ fontSize: 24, fontWeight: 600 }}>{weather.wind} km/h</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>Wind Speed</div>
+                    </div>
+                    <div style={{ padding: 24, background: 'rgba(20,20,35,0.8)', textAlign: 'center' }}>
+                      <Thermometer size={28} style={{ color: '#f472b6', marginBottom: 12 }} />
+                      <div style={{ fontSize: 24, fontWeight: 600 }}>{weather.pressure} hPa</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>Pressure</div>
+                    </div>
+                    <div style={{ padding: 24, background: 'rgba(20,20,35,0.8)', textAlign: 'center' }}>
+                      <Sun size={28} style={{ color: '#fbbf24', marginBottom: 12 }} />
+                      <div style={{ fontSize: 24, fontWeight: 600 }}>{weather.uvIndex}</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>UV Index</div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ padding: '16px 32px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Weather data updates every 5 minutes</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Powered by Open-Meteo API</div>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -671,12 +1034,24 @@ export default function Dashboard() {
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Cloud Sync Indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: cloudError ? 1 : 0.6, fontSize: 12 }} title={cloudError ? 'Cloud sync error' : cloudSyncing ? 'Syncing...' : 'Cloud synced'}>
+            {cloudError ? (
+              <CloudOff size={15} style={{ color: '#ef4444' }} />
+            ) : cloudSyncing ? (
+              <RefreshCw size={15} style={{ animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <Cloud size={15} style={{ color: '#22c55e' }} />
+            )}
+          </div>
           <Wifi size={15} style={{ opacity: 0.6 }} />
           <Volume2 size={15} style={{ opacity: 0.6 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.6, fontSize: 12 }}><Battery size={15} /> 100%</div>
           <span style={{ fontSize: 13, fontWeight: 500 }}>{formatTime12()}</span>
           <div onClick={() => setShowSettings(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.1)', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
-            <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><User size={14} /></div>
+            <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
+              {AVATARS.find(a => a.id === selectedAvatar)?.emoji || '👨‍🚀'}
+            </div>
             <span style={{ fontSize: 13 }}>{userName}</span>
           </div>
         </div>
@@ -980,16 +1355,154 @@ export default function Dashboard() {
             {/* Profile Section */}
             <div style={{ marginBottom: 28 }}>
               <h3 style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, marginBottom: 14 }}>PROFILE</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 600 }}>{userName.charAt(0).toUpperCase()}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                {/* Clickable Avatar */}
+                <div style={{ position: 'relative' }}>
+                  <div
+                    onClick={() => setShowAvatarPicker(!showAvatarPicker)}
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: '50%',
+                      background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 28,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      border: showAvatarPicker ? '3px solid white' : '3px solid transparent',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    title="Click to change avatar"
+                  >
+                    {AVATARS.find(a => a.id === selectedAvatar)?.emoji || '👨‍🚀'}
+                  </div>
+                  <div style={{
+                    position: 'absolute',
+                    bottom: -2,
+                    right: -2,
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    background: accent.primary,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    border: '2px solid rgba(15,15,25,0.98)',
+                  }}>✏️</div>
+
+                  {/* Avatar Picker Popup */}
+                  {showAvatarPicker && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 65,
+                      left: 0,
+                      background: 'rgba(20,20,35,0.98)',
+                      border: `1px solid ${accent.primary}40`,
+                      borderRadius: 16,
+                      padding: 12,
+                      zIndex: 10,
+                      boxShadow: `0 10px 40px rgba(0,0,0,0.5), 0 0 20px ${accent.primary}20`,
+                      animation: 'scaleIn 0.2s ease-out',
+                    }}>
+                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginBottom: 10, fontWeight: 500 }}>Choose Avatar</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, width: 200 }}>
+                        {AVATARS.map(avatar => (
+                          <div
+                            key={avatar.id}
+                            onClick={() => { setSelectedAvatar(avatar.id); setShowAvatarPicker(false); }}
+                            style={{
+                              width: 42,
+                              height: 42,
+                              borderRadius: 10,
+                              background: selectedAvatar === avatar.id ? `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})` : 'rgba(255,255,255,0.08)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 20,
+                              cursor: 'pointer',
+                              border: selectedAvatar === avatar.id ? '2px solid white' : '2px solid transparent',
+                              transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.background = selectedAvatar === avatar.id ? `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})` : 'rgba(255,255,255,0.15)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = selectedAvatar === avatar.id ? `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})` : 'rgba(255,255,255,0.08)'; }}
+                            title={avatar.label}
+                          >
+                            {avatar.emoji}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginBottom: 5 }}>Your Name</div>
-                  <input type="text" value={userName} onChange={e => setUserName(e.target.value)} style={{ width: '100%', background: 'rgba(30,30,45,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', color: 'white', fontSize: 13, outline: 'none', transition: 'border-color 0.2s' }} onFocus={e => e.currentTarget.style.borderColor = accent.primary} onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'} />
+                  <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 2 }}>{userName}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{currentUser?.email}</div>
                 </div>
               </div>
-              <div style={{ marginTop: 14 }}>
+
+              {/* City Input with Autocomplete */}
+              <div style={{ position: 'relative' }}>
                 <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', marginBottom: 5 }}>City (for weather)</div>
-                <input type="text" value={city} onChange={e => setCity(e.target.value)} style={{ width: '100%', background: 'rgba(30,30,45,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', color: 'white', fontSize: 13, outline: 'none', transition: 'border-color 0.2s' }} placeholder="Enter your city" onFocus={e => e.currentTarget.style.borderColor = accent.primary} onBlur={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'} />
+                <input
+                  type="text"
+                  value={city}
+                  onChange={e => handleCityInput(e.target.value)}
+                  onFocus={() => citySuggestions.length > 0 && setShowCitySuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowCitySuggestions(false), 200)}
+                  style={{ width: '100%', background: 'rgba(30,30,45,0.8)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 14px', color: 'white', fontSize: 13, outline: 'none', transition: 'border-color 0.2s' }}
+                  placeholder="Start typing city name..."
+                />
+                {/* City Suggestions Dropdown */}
+                {showCitySuggestions && citySuggestions.length > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(20,20,35,0.98)',
+                    border: `1px solid ${accent.primary}40`,
+                    borderRadius: 12,
+                    marginTop: 4,
+                    overflow: 'hidden',
+                    zIndex: 100,
+                    boxShadow: '0 10px 40px rgba(0,0,0,0.5)',
+                  }}>
+                    {citySuggestions.map((suggestion, index) => (
+                      <div
+                        key={index}
+                        onClick={() => selectCity(suggestion.name, suggestion.country)}
+                        style={{
+                          padding: '12px 14px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          borderBottom: index < citySuggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <MapPin size={14} style={{ color: accent.primary }} />
+                        <span style={{ fontSize: 13 }}>{suggestion.name}</span>
+                        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginLeft: 'auto' }}>{suggestion.country}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Clock Format Section */}
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, marginBottom: 14 }}>CLOCK FORMAT</h3>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setClockFormat('12')} style={{ flex: 1, padding: '12px 16px', background: clockFormat === '12' ? accent.primary : 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' }}>12 Hour</button>
+                <button onClick={() => setClockFormat('24')} style={{ flex: 1, padding: '12px 16px', background: clockFormat === '24' ? accent.primary : 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' }}>24 Hour</button>
               </div>
             </div>
 
