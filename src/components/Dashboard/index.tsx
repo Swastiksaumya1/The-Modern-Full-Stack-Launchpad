@@ -5,8 +5,9 @@ import {
   X, Cloud, Sun, Moon, Sunrise, Sunset, CloudRain, Wind, Music,
   Calendar, StickyNote, BarChart3, Thermometer, MapPin,
   Calculator, Link, Quote, Zap, Target, TrendingUp,
-  CloudSun, Snowflake, CloudLightning
+  CloudSun, Snowflake, CloudLightning, LogOut
 } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext'
 
 // ============================================================================
 // TYPES
@@ -68,9 +69,14 @@ const getWeatherIcon = (condition: string) => {
 
 export default function Dashboard() {
   // ============================================================================
+  // AUTH
+  // ============================================================================
+  const { currentUser, logout } = useAuth()
+
+  // ============================================================================
   // CORE STATE
   // ============================================================================
-  const [userName, setUserName] = useState(() => localStorage.getItem('focus-user-name') || 'Swastik')
+  const [userName, setUserName] = useState(() => localStorage.getItem('focus-user-name') || currentUser?.displayName || 'User')
   const [city, setCity] = useState(() => localStorage.getItem('focus-city') || 'New Delhi')
   const [time, setTime] = useState(new Date())
   const [showSettings, setShowSettings] = useState(false)
@@ -1043,6 +1049,38 @@ export default function Dashboard() {
                   <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>Day Streak</div>
                 </div>
               </div>
+            </div>
+
+            {/* Account Section */}
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, marginBottom: 14 }}>ACCOUNT</h3>
+              <div style={{ padding: 14, background: 'rgba(30,30,45,0.8)', borderRadius: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 4 }}>Signed in as</div>
+                <div style={{ fontSize: 14, fontWeight: 500, color: accent.primary }}>{currentUser?.email}</div>
+              </div>
+              <button
+                onClick={() => { setShowSettings(false); logout(); }}
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  borderRadius: 12,
+                  color: '#f87171',
+                  fontSize: 14,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.5)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)'; }}
+              >
+                <LogOut size={18} /> Sign Out
+              </button>
             </div>
 
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 30, padding: '16px 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}>FocusOS v2.0 • Built with ❤️ for {userName}</div>
