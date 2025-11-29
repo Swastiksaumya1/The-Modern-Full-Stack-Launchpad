@@ -3,15 +3,23 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration
+// SECURITY: Firebase config is loaded from .env.local (which is .gitignored)
+// NEVER commit actual credentials to the repository
 const firebaseConfig = {
-  apiKey: "AIzaSyBH1LiQln_BUqdNflYq6NtMwEeI0aK5iPY",
-  authDomain: "focusos-dashboard-192ad.firebaseapp.com",
-  projectId: "focusos-dashboard-192ad",
-  storageBucket: "focusos-dashboard-192ad.firebasestorage.app",
-  messagingSenderId: "522359106544",
-  appId: "1:522359106544:web:4df9c1308040ef59154b35"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
 };
+
+// Validate Firebase configuration
+if (!firebaseConfig.apiKey) {
+  console.warn(
+    "⚠️ Firebase API Key not found. Please create .env.local with your Firebase credentials. See .env for template."
+  );
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -26,4 +34,3 @@ export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
 export default app;
-
