@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Trash2, Copy, Settings } from 'lucide-react';
 
 export interface EditModeConfig {
@@ -28,18 +28,16 @@ export const WidgetEditMode: React.FC<WidgetEditModeProps> = ({
   children,
   className = '',
 }) => {
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(
+  const [longPressTimer, setLongPressTimer] = useState<ReturnType<typeof setTimeout> | null>(
     null
   );
   const elementRef = useRef<HTMLDivElement>(null);
-  const [wiggle, setWiggle] = useState(false);
 
   // Handle long press for edit mode activation
   const handleMouseDown = () => {
     const timer = setTimeout(() => {
       if (!editConfig.isEditMode) {
         // Start edit mode with wiggle
-        setWiggle(true);
       }
       onSelect(widgetId);
     }, 500); // 500ms long press

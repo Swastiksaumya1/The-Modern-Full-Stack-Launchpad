@@ -88,7 +88,7 @@ interface DashboardProps {
   editMode?: boolean;
 }
 
-export default function Dashboard({ editMode = false }: DashboardProps) {
+export default function Dashboard({ editMode: _editMode = false }: DashboardProps) {
   // ============================================================================
   // AUTH
   // ============================================================================

@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from 'react';
 const GRID_COLS = 12;
 const GRID_ROW_HEIGHT = 80; // pixels
 const GRID_GAP = 16; // 16px spacing
-const SNAP_THRESHOLD = 8; // pixels for snap-to-grid
 
 export interface GridItem {
   id: string;
@@ -36,11 +35,6 @@ export const GridLayout: React.FC<GridLayoutProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const colWidth = (containerWidth - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
-
-  // Snap to grid helper
-  const snapToGrid = (value: number, gridSize: number): number => {
-    return Math.round(value / gridSize) * gridSize;
-  };
 
   // Get grid position from pixel position
   const getGridPosition = (

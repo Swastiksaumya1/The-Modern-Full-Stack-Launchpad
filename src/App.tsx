@@ -1,12 +1,11 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import './App.css'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Dashboard from './components/Dashboard'
 import AuthPage from './components/Auth/AuthPage'
 import { ThemeProvider, useTheme } from './components/Personalization'
 import { EnhancedStatusBar, NotificationStack, LockScreen } from './components/BonusOSFeatures'
-import { Navigation } from './components/Navigation'
-import { GridLayout } from './components/GridLayout'
+import { StickyTopBar } from './components/Navigation'
 
 interface Notification {
   id: string;
@@ -26,16 +25,15 @@ function AppContent() {
   const { theme } = useTheme();
   const [isLocked, setIsLocked] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [editMode, setEditMode] = useState(false);
 
-  // Add notification
-  const addNotification = (notif: Omit<Notification, 'id' | 'timestamp'>) => {
-    const id = Date.now().toString();
-    setNotifications(prev => [{ ...notif, id, timestamp: new Date() }, ...prev]);
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000);
-  };
+  // Add notification (can be used by widgets to show notifications)
+  // const addNotification = (notif: Omit<Notification, 'id' | 'timestamp'>) => {
+  //   const id = Date.now().toString();
+  //   setNotifications(prev => [{ ...notif, id, timestamp: new Date() }, ...prev]);
+  //   setTimeout(() => {
+  //     setNotifications(prev => prev.filter(n => n.id !== id));
+  //   }, 5000);
+  // };
 
   // Show loading spinner while checking auth state
   if (loading) {
@@ -98,10 +96,9 @@ function AppContent() {
       />
 
       {/* Navigation */}
-      <Navigation
-        editMode={editMode}
-        onEditModeToggle={() => setEditMode(!editMode)}
-        onLockClick={() => setIsLocked(true)}
+      <StickyTopBar
+        title="FocusOS"
+        actions={<button className="text-gray-400 hover:text-white">⚙️</button>}
       />
 
       {/* Main Content Area */}
@@ -109,7 +106,7 @@ function AppContent() {
         {/* Grid Layout for Dashboard */}
         <div className="max-w-7xl mx-auto px-4">
           <Dashboard
-            editMode={editMode}
+            editMode={false}
           />
         </div>
       </main>

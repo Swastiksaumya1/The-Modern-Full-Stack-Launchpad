@@ -141,7 +141,6 @@ export const InteractiveButton: React.FC<{
   className = '',
   variant = 'primary',
 }) => {
-  const [isPressed, setIsPressed] = useState(false);
   const { ripples, addRipple } = useRipple();
   const { playSound } = useSoundEffect();
 
@@ -158,8 +157,6 @@ export const InteractiveButton: React.FC<{
         playSound('tap');
         onClick?.();
       }}
-      onMouseDown={() => setIsPressed(true)}
-      onMouseUp={() => setIsPressed(false)}
       className={`
         relative overflow-hidden
         px-4 py-2 rounded-lg font-medium

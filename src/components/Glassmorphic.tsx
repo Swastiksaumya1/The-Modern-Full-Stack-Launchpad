@@ -120,18 +120,12 @@ export const InteractiveGlassmorphic: React.FC<
 > = ({ children, elevation = 'base', onPress, ...props }) => {
   const [isPressed, setIsPressed] = React.useState(false);
 
-  const handleMouseDown = () => setIsPressed(true);
-  const handleMouseUp = () => setIsPressed(false);
-  const handleMouseLeave = () => setIsPressed(false);
-
   return (
     <Glassmorphic
       elevation={isPressed ? 'elevated2' : elevation}
       className={props.className}
-      onMouseDown={handleMouseDown}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseLeave}
       onClick={() => {
+        setIsPressed(!isPressed);
         onPress?.();
         props.onClick?.();
       }}

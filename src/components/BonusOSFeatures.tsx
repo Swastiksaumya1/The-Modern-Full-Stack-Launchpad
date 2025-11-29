@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Bell, Lock, Clock, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { Lock } from 'lucide-react';
 
 // Lock Screen Component
 export const LockScreen: React.FC<{
@@ -7,7 +7,6 @@ export const LockScreen: React.FC<{
   onUnlock: () => void;
   wallpaper?: string;
 }> = ({ isLocked, onUnlock, wallpaper }) => {
-  const [password, setPassword] = useState('');
 
   if (!isLocked) return null;
 

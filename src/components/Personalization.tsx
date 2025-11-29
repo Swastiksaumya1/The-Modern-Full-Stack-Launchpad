@@ -23,7 +23,7 @@ export const useTheme = () => {
 };
 
 // Theme color schemes
-const themes = {
+export const THEMES = {
   dark: {
     bg: 'bg-gray-950',
     surface: 'bg-gray-900',
@@ -55,7 +55,7 @@ const themes = {
 };
 
 // Layout spacing configurations
-const layouts = {
+export const LAYOUTS = {
   compact: {
     gap: 'gap-2',
     padding: 'p-2',
