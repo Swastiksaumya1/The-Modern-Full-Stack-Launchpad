@@ -11,15 +11,6 @@ export function StatusBar({ city, temp, condition }: StatusBarProps) {
   
   return (
     <header className="flex items-center justify-between px-6 pt-4 pb-2 relative z-50">
-      {/* Left - Brand */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-          <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>FocusOS</span>
-        </div>
-        <span className="text-xs text-slate-400 hidden sm:inline">v3.0</span>
-      </div>
-
       {/* Center - Time & Date */}
       <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-4 text-sm text-slate-200">
         <span className="font-medium">
