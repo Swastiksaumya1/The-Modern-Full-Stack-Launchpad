@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   LayoutGrid, CheckSquare, Clock, Settings, Wifi, Volume2, Battery,
   Timer, Play, Pause, RotateCcw, Plus, Check, Trash2, Maximize2, Flag,
@@ -1603,7 +1603,7 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
             <div style={{ marginBottom: 28 }}>
               <h3 style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', letterSpacing: 1, marginBottom: 14 }}>TIME OF DAY</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14, background: 'rgba(30,30,45,0.8)', borderRadius: 12 }}>
-                <TimeIcon size={28} style={{ color: time.getHours() >= 6 && time.getHours() < 19 ? '#fbbf24' : '#94a3b8' }} />
+                {React.createElement(TimeIcon, { size: 28, style: { color: time.getHours() >= 6 && time.getHours() < 19 ? '#fbbf24' : '#94a3b8' } })}
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 500 }}>{time.getHours() >= 6 && time.getHours() < 19 ? 'Daytime ☀️' : 'Nighttime 🌙'}</div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Dynamic background {wallpaper === 'dynamic' ? 'active' : 'inactive'}</div>
