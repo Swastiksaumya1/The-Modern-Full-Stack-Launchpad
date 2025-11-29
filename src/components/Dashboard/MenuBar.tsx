@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Wifi, Battery, Volume2, User } from 'lucide-react'
+import { Wifi, Battery, Volume2, User, Lock } from 'lucide-react'
 
 type Props = {
   userName: string
   onOpenSettings: () => void
+  onLockScreen: () => void
 }
 
-export default function MenuBar({ userName, onOpenSettings }: Props) {
+export default function MenuBar({ userName, onOpenSettings, onLockScreen }: Props) {
   const [time, setTime] = useState(new Date())
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
 
@@ -86,6 +87,15 @@ export default function MenuBar({ userName, onOpenSettings }: Props) {
         <div className="text-xs text-gray-300">
           {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>
+
+        {/* Lock button */}
+        <button
+          onClick={onLockScreen}
+          className="p-2 rounded-lg hover:bg-white/10 transition-colors text-gray-400 hover:text-white"
+          title="Lock screen (Cmd+L)"
+        >
+          <Lock size={16} />
+        </button>
 
         <button 
           onClick={onOpenSettings}

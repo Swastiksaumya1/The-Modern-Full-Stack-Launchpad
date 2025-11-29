@@ -5,10 +5,11 @@ import {
   X, Cloud, Sun, Moon, Sunrise, Sunset, CloudRain, Wind, Music,
   Calendar, StickyNote, BarChart3, Thermometer, MapPin,
   Calculator, Link, Quote, Zap, Target, TrendingUp,
-  CloudSun, Snowflake, CloudLightning, LogOut, CloudOff, RefreshCw
+  CloudSun, Snowflake, CloudLightning, LogOut, CloudOff, RefreshCw, Lock
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { loadUserData, syncTasks, syncNotes, syncHabits, syncPreferences, syncFocusSessions, syncQuickLinks } from '../../lib/firestore'
+import AdvancedLockScreen from '../AdvancedLockScreen'
 
 // ============================================================================
 // TYPES
@@ -97,6 +98,9 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
   // ============================================================================
   // CORE STATE
   // ============================================================================
+  // Lock Screen State
+  const [isLocked, setIsLocked] = useState(false)
+  
   // Use Firebase displayName as the primary source, fallback to localStorage
   const [userName] = useState(() => currentUser?.displayName || localStorage.getItem('focus-user-name') || 'User')
   const [city, setCity] = useState(() => localStorage.getItem('focus-city') || 'New Delhi')
@@ -312,6 +316,18 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
   useEffect(() => { localStorage.setItem('focus-clock-format', clockFormat) }, [clockFormat])
   useEffect(() => { localStorage.setItem('focus-habits', JSON.stringify(habits)) }, [habits])
   useEffect(() => { localStorage.setItem('focus-links', JSON.stringify(quickLinks)) }, [quickLinks])
+
+  // Keyboard shortcut for lock screen (Cmd+L or Ctrl+L)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'l') {
+        e.preventDefault()
+        setIsLocked(true)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   // ============================================================================
   // CLOUD SYNC - Load data from Firestore on mount
@@ -1015,6 +1031,30 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
 
   return (
     <div style={{ minHeight: '100vh', color: 'white', fontFamily: "'Inter', system-ui, sans-serif", position: 'relative' }}>
+      {/* Lock Screen Overlay */}
+      {isLocked && (
+        <AdvancedLockScreen
+          isLocked={isLocked}
+          onUnlock={() => setIsLocked(false)}
+          userName={userName}
+          calendarEvents={[
+            { id: '1', title: 'Daily Standup', time: '09:00 AM', color: '#3b82f6' },
+            { id: '2', title: 'Lunch Break', time: '12:30 PM', color: '#10b981' },
+            { id: '3', title: 'Team Sync', time: '03:00 PM', color: '#8b5cf6' },
+          ]}
+          focusStats={{
+            tasksCompleted: stats.tasksCompleted,
+            focusTimeToday: Math.round(stats.focusTime * 10) / 10,
+            productivity: stats.productivity
+          }}
+          notifications={tasks.filter(t => !t.completed).slice(0, 3).map((t: Task) => ({
+            id: t.id,
+            title: t.text,
+            time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+          }))}
+        />
+      )}
+
       {/* Dynamic Background */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 0, background: wallpaper === 'dynamic' ? getDynamicBackground() : WALLPAPERS.find(w => w.id === wallpaper)?.preview, transition: 'background 2s ease' }}>
         {/* Stars overlay for night */}
@@ -1052,6 +1092,7 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
           <Volume2 size={15} style={{ opacity: 0.6 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.6, fontSize: 12 }}><Battery size={15} /> 100%</div>
           <span style={{ fontSize: 13, fontWeight: 500 }}>{formatTime12()}</span>
+          <button onClick={() => setIsLocked(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', borderRadius: 6, color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'white' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }} title="Lock screen (Cmd+L)"><Lock size={16} /></button>
           <div onClick={() => setShowSettings(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.1)', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
               {AVATARS.find(a => a.id === selectedAvatar)?.emoji || '👨‍🚀'}
