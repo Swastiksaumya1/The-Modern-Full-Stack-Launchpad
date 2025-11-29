@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ChevronUp } from 'lucide-react';
+import { X, ChevronUp, Clock, CheckSquare, Bell } from 'lucide-react';
 
 interface LockScreenProps {
   isLocked: boolean;
@@ -11,16 +11,20 @@ interface LockScreenProps {
     time: string;
     color: string;
   }>;
-  focusStats?: {
-    tasksCompleted: number;
-    focusTimeToday: number;
-    productivity: number;
-  };
   notifications?: Array<{
     id: string;
     title: string;
     time: string;
   }>;
+  pendingTasks?: Array<{
+    id: string;
+    text: string;
+    priority?: 'low' | 'medium' | 'high';
+  }>;
+  timerActive?: boolean;
+  timerTime?: string;
+  stopwatchTime?: string;
+  stopwatchActive?: boolean;
 }
 
 export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
@@ -28,13 +32,18 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
   onUnlock,
   userName = 'User',
   calendarEvents = [],
-  focusStats = { tasksCompleted: 0, focusTimeToday: 0, productivity: 0 },
   notifications = [],
+  pendingTasks = [],
+  timerActive = false,
+  timerTime = '',
+  stopwatchTime = '',
+  stopwatchActive = false,
 }) => {
   const [time, setTime] = useState(new Date());
   const [date, setDate] = useState(new Date());
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(true);
   const touchStartRef = useRef(0);
 
   useEffect(() => {
@@ -45,49 +54,6 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [isLocked]);
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    setIsDragging(true);
-    touchStartRef.current = e.clientY;
-  };
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    const delta = e.clientY - touchStartRef.current;
-    if (delta < 0) {
-      setDragY(Math.min(Math.abs(delta), 150));
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    if (dragY > 100) {
-      onUnlock();
-    }
-    setDragY(0);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    setIsDragging(true);
-    touchStartRef.current = e.touches[0].clientY;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isDragging) return;
-    const delta = e.touches[0].clientY - touchStartRef.current;
-    if (delta < 0) {
-      setDragY(Math.min(Math.abs(delta), 150));
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    if (dragY > 100) {
-      onUnlock();
-    }
-    setDragY(0);
-  };
 
   const formattedTime = time.toLocaleTimeString('en-US', {
     hour: 'numeric',
@@ -101,14 +67,13 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
     day: 'numeric',
   });
 
-  const getEventColor = (colorHex: string) => {
-    if (colorHex === '#3b82f6') return { bg: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.3)', dot: '#3b82f6' };
-    if (colorHex === '#10b981') return { bg: 'rgba(16, 185, 129, 0.1)', border: 'rgba(16, 185, 129, 0.3)', dot: '#10b981' };
-    if (colorHex === '#8b5cf6') return { bg: 'rgba(139, 92, 246, 0.1)', border: 'rgba(139, 92, 246, 0.3)', dot: '#8b5cf6' };
+  if (!isLocked) return null;
+
+  const getPriorityColor = (priority?: string) => {
+    if (priority === 'high') return { bg: 'rgba(239, 68, 68, 0.1)', border: 'rgba(239, 68, 68, 0.3)', dot: '#ef4444' };
+    if (priority === 'medium') return { bg: 'rgba(245, 158, 11, 0.1)', border: 'rgba(245, 158, 11, 0.3)', dot: '#f59e0b' };
     return { bg: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.3)', dot: '#3b82f6' };
   };
-
-  if (!isLocked) return null;
 
   return (
     <div
@@ -119,14 +84,53 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
         background: 'linear-gradient(135deg, #0f0a1a 0%, #1a0f3a 50%, #0f0a1a 100%)',
         overflow: 'hidden',
         cursor: isDragging ? 'grabbing' : 'grab',
+        display: 'flex',
       }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      onMouseDown={(e) => {
+        if ((e.target as HTMLElement).closest('[data-notif-panel]')) return;
+        setIsDragging(true);
+        touchStartRef.current = e.clientY;
+      }}
+      onMouseMove={(e) => {
+        if (!isDragging) return;
+        const delta = e.clientY - touchStartRef.current;
+        if (delta < 0) {
+          setDragY(Math.min(Math.abs(delta), 150));
+        }
+      }}
+      onMouseUp={() => {
+        setIsDragging(false);
+        if (dragY > 100) {
+          onUnlock();
+        }
+        setDragY(0);
+      }}
+      onMouseLeave={() => {
+        setIsDragging(false);
+        if (dragY > 100) {
+          onUnlock();
+        }
+        setDragY(0);
+      }}
+      onTouchStart={(e) => {
+        if ((e.target as HTMLElement).closest('[data-notif-panel]')) return;
+        setIsDragging(true);
+        touchStartRef.current = e.touches[0].clientY;
+      }}
+      onTouchMove={(e) => {
+        if (!isDragging) return;
+        const delta = e.touches[0].clientY - touchStartRef.current;
+        if (delta < 0) {
+          setDragY(Math.min(Math.abs(delta), 150));
+        }
+      }}
+      onTouchEnd={() => {
+        setIsDragging(false);
+        if (dragY > 100) {
+          onUnlock();
+        }
+        setDragY(0);
+      }}
     >
       {/* Animated background elements */}
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
@@ -159,30 +163,53 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
         />
       </div>
 
-      {/* Main content - center */}
-      <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-        {/* Large clock display */}
+      {/* Main clock area - 3/4 width */}
+      <div
+        style={{
+          flex: '0 0 75%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '32px',
+          position: 'relative',
+        }}
+      >
         <div
           style={{
             textAlign: 'center',
-            marginBottom: '32px',
             userSelect: 'none',
             transform: `translateY(-${dragY}px)`,
             transition: isDragging ? 'none' : 'transform 0.3s ease-out',
           }}
         >
-          {/* Time */}
-          <div style={{ fontSize: '120px', fontWeight: 900, color: 'white', textShadow: '0 20px 40px rgba(0,0,0,0.5)', letterSpacing: '-2px', lineHeight: 1 }}>
+          {/* Time - Main display */}
+          <div style={{ fontSize: '140px', fontWeight: 900, color: 'white', textShadow: '0 20px 60px rgba(0,0,0,0.6)', letterSpacing: '-4px', lineHeight: 0.9 }}>
             {formattedTime}
           </div>
 
           {/* Date */}
-          <div style={{ fontSize: '24px', color: 'rgb(209, 213, 219)', marginTop: '16px', fontWeight: 300, letterSpacing: '0.1em' }}>
+          <div style={{ fontSize: '28px', color: 'rgb(209, 213, 219)', marginTop: '24px', fontWeight: 300, letterSpacing: '0.05em' }}>
             {formattedDate}
           </div>
 
+          {/* Timer or Stopwatch if active */}
+          {(timerActive || stopwatchActive) && (
+            <div style={{ marginTop: '32px', padding: '20px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '16px', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center', marginBottom: '8px' }}>
+                <Clock size={20} style={{ color: 'rgb(96, 165, 250)' }} />
+                <span style={{ fontSize: '12px', color: 'rgb(156, 163, 175)', textTransform: 'uppercase', fontWeight: 600 }}>
+                  {timerActive ? 'Timer' : 'Stopwatch'}
+                </span>
+              </div>
+              <div style={{ fontSize: '48px', fontWeight: 700, color: 'rgb(147, 197, 253)', fontFamily: 'monospace' }}>
+                {timerActive ? timerTime : stopwatchTime}
+              </div>
+            </div>
+          )}
+
           {/* Greeting */}
-          <div style={{ fontSize: '18px', color: 'rgb(156, 163, 175)', marginTop: '8px' }}>
+          <div style={{ fontSize: '18px', color: 'rgb(156, 163, 175)', marginTop: '24px', fontWeight: 300 }}>
             Good {time.getHours() < 12 ? 'Morning' : time.getHours() < 18 ? 'Afternoon' : 'Evening'}, {userName}
           </div>
         </div>
@@ -191,7 +218,7 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
         <div
           style={{
             position: 'absolute',
-            bottom: '128px',
+            bottom: '48px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -204,121 +231,210 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
         </div>
       </div>
 
-      {/* Bottom panel - Calendar Events & Stats */}
+      {/* Right panel - 1/4 width - Notifications/Events/Tasks */}
       <div
+        data-notif-panel
         style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: 'linear-gradient(to top, rgba(0,0,0,1), rgba(30,30,45,0.8), transparent)',
+          flex: '0 0 25%',
+          background: 'linear-gradient(to left, rgba(0,0,0,0.8), rgba(0,0,0,0.4))',
           backdropFilter: 'blur(20px)',
-          borderTop: '1px solid rgba(255,255,255,0.1)',
+          borderLeft: '1px solid rgba(255,255,255,0.1)',
           padding: '24px',
-          maxHeight: '384px',
           overflowY: 'auto',
-          transform: `translateY(${dragY > 0 ? -dragY : 0}px)`,
-          transition: isDragging ? 'none' : 'transform 0.3s ease-out',
-          opacity: Math.max(0.2, 1 - dragY / 200),
-          pointerEvents: dragY > 50 ? 'none' : 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '20px',
+          position: 'relative',
         }}
       >
-        {/* Today's Stats */}
-        {(focusStats.tasksCompleted > 0 || focusStats.focusTimeToday > 0) && (
-          <div style={{ marginBottom: '24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-            {/* Tasks */}
-            <div style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 700, color: 'rgb(134, 239, 172)' }}>{focusStats.tasksCompleted}</div>
-              <div style={{ fontSize: '12px', color: 'rgb(134, 239, 172)', marginTop: '4px' }}>Tasks Done</div>
-            </div>
+        {/* Toggle button */}
+        <button
+          onClick={() => setShowNotifications(!showNotifications)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            padding: '10px 12px',
+            borderRadius: '8px',
+            background: 'rgba(59, 130, 246, 0.1)',
+            border: '1px solid rgba(59, 130, 246, 0.3)',
+            color: 'rgb(147, 197, 253)',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(59, 130, 246, 0.2)';
+            e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+            e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+          }}
+        >
+          <Bell size={16} />
+          {showNotifications ? 'Notifications' : 'Tasks & Events'}
+        </button>
 
-            {/* Focus Time */}
-            <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 700, color: 'rgb(147, 197, 253)' }}>
-                {Math.floor(focusStats.focusTimeToday / 60)}h
-              </div>
-              <div style={{ fontSize: '12px', color: 'rgb(147, 197, 253)', marginTop: '4px' }}>Focus Time</div>
-            </div>
-
-            {/* Productivity */}
-            <div style={{ background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: 700, color: 'rgb(196, 181, 253)' }}>{focusStats.productivity}%</div>
-              <div style={{ fontSize: '12px', color: 'rgb(196, 181, 253)', marginTop: '4px' }}>Productivity</div>
-            </div>
-          </div>
-        )}
-
-        {/* Calendar Events */}
-        {calendarEvents.length > 0 && (
-          <div style={{ marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '12px', fontWeight: 600, color: 'rgb(209, 213, 219)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Upcoming Events
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {calendarEvents.slice(0, 4).map(event => {
-                const colors = getEventColor(event.color);
-                return (
-                  <div
-                    key={event.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '12px',
-                      padding: '12px',
-                      borderRadius: '8px',
-                      background: colors.bg,
-                      border: `1px solid ${colors.border}`,
-                    }}
-                  >
+        {/* Notifications view (default) */}
+        {showNotifications && (
+          <>
+            {notifications.length > 0 ? (
+              <div>
+                <h3 style={{ fontSize: '11px', fontWeight: 700, color: 'rgb(209, 213, 219)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Notifications
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {notifications.slice(0, 5).map(notif => (
                     <div
+                      key={notif.id}
                       style={{
-                        width: '4px',
-                        height: '4px',
-                        borderRadius: '50%',
-                        marginTop: '6px',
-                        flexShrink: 0,
-                        backgroundColor: colors.dot,
+                        padding: '12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
                       }}
-                    />
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: 500, color: 'white' }}>{event.title}</div>
-                      <div style={{ fontSize: '12px', color: 'rgb(156, 163, 175)' }}>{event.time}</div>
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                      }}
+                    >
+                      <div style={{ fontSize: '13px', color: 'white', fontWeight: 500 }}>{notif.title}</div>
+                      <div style={{ fontSize: '11px', color: 'rgb(156, 163, 175)', marginTop: '4px' }}>{notif.time}</div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgb(107, 114, 128)' }}>
+                <Bell size={24} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                <div style={{ fontSize: '12px' }}>No notifications</div>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Notifications */}
-        {notifications.length > 0 && (
-          <div>
-            <h3 style={{ fontSize: '12px', fontWeight: 600, color: 'rgb(209, 213, 219)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              Notifications
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {notifications.slice(0, 3).map(notif => (
-                <div
-                  key={notif.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    padding: '12px',
-                    background: 'rgba(255,255,255,0.05)',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: '14px', color: 'white' }}>{notif.title}</div>
-                    <div style={{ fontSize: '12px', color: 'rgb(156, 163, 175)' }}>{notif.time}</div>
-                  </div>
+        {/* Tasks & Events view */}
+        {!showNotifications && (
+          <>
+            {/* Pending Tasks */}
+            {pendingTasks.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '11px', fontWeight: 700, color: 'rgb(209, 213, 219)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Pending Tasks
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {pendingTasks.slice(0, 4).map(task => {
+                    const colors = getPriorityColor(task.priority);
+                    return (
+                      <div
+                        key={task.id}
+                        style={{
+                          display: 'flex',
+                          gap: '10px',
+                          padding: '10px',
+                          background: colors.bg,
+                          border: `1px solid ${colors.border}`,
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = colors.bg.replace('0.1', '0.15');
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = colors.bg;
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '4px',
+                            height: '4px',
+                            borderRadius: '50%',
+                            marginTop: '6px',
+                            flexShrink: 0,
+                            backgroundColor: colors.dot,
+                          }}
+                        />
+                        <div style={{ fontSize: '13px', color: 'white' }}>{task.text}</div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            )}
+
+            {/* Calendar Events */}
+            {calendarEvents.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '11px', fontWeight: 700, color: 'rgb(209, 213, 219)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                  Today's Events
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {calendarEvents.slice(0, 4).map(event => {
+                    const colors = {
+                      blue: { bg: 'rgba(59, 130, 246, 0.1)', border: 'rgba(59, 130, 246, 0.3)', dot: '#3b82f6' },
+                      green: { bg: 'rgba(16, 185, 129, 0.1)', border: 'rgba(16, 185, 129, 0.3)', dot: '#10b981' },
+                      purple: { bg: 'rgba(139, 92, 246, 0.1)', border: 'rgba(139, 92, 246, 0.3)', dot: '#8b5cf6' },
+                    };
+                    const eventColor = event.color === '#10b981' ? colors.green : event.color === '#8b5cf6' ? colors.purple : colors.blue;
+                    
+                    return (
+                      <div
+                        key={event.id}
+                        style={{
+                          display: 'flex',
+                          gap: '10px',
+                          padding: '10px',
+                          background: eventColor.bg,
+                          border: `1px solid ${eventColor.border}`,
+                          borderRadius: '8px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = eventColor.bg.replace('0.1', '0.15');
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = eventColor.bg;
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '4px',
+                            height: '4px',
+                            borderRadius: '50%',
+                            marginTop: '6px',
+                            flexShrink: 0,
+                            backgroundColor: eventColor.dot,
+                          }}
+                        />
+                        <div>
+                          <div style={{ fontSize: '13px', color: 'white', fontWeight: 500 }}>{event.title}</div>
+                          <div style={{ fontSize: '11px', color: 'rgb(156, 163, 175)' }}>{event.time}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {pendingTasks.length === 0 && calendarEvents.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '20px 0', color: 'rgb(107, 114, 128)' }}>
+                <CheckSquare size={24} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                <div style={{ fontSize: '12px' }}>No tasks or events</div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -333,6 +449,7 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
             width: `${(dragY / 150) * 100}%`,
             background: 'linear-gradient(to right, transparent, rgb(59, 130, 246), transparent)',
             transition: isDragging ? 'none' : 'width 0.3s ease-out',
+            zIndex: 51,
           }}
         />
       )}
@@ -354,6 +471,7 @@ export const AdvancedLockScreen: React.FC<LockScreenProps> = ({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          zIndex: 52,
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.background = 'rgba(255,255,255,0.2)';

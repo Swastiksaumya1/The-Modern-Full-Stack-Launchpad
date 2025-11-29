@@ -146,6 +146,12 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
   const [stopwatchTime, setStopwatchTime] = useState(0)
   const [laps, setLaps] = useState<number[]>([])
 
+  // Timer State
+  // @ts-ignore - will be used when timer functionality is implemented
+  const [timerSeconds, setTimerSeconds] = useState(5 * 60)
+  // @ts-ignore - will be used when timer functionality is implemented
+  const [timerActive, setTimerActive] = useState(false)
+
   // Tasks State
   const [tasks, setTasks] = useState<Task[]>(() => {
     try {
@@ -479,6 +485,29 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
     const ampm = time.getHours() >= 12 ? 'PM' : 'AM'
     return `${hours}:${mins} ${ampm}`
   }
+
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const formatStopwatchTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    const ms = Math.floor((seconds % 1) * 100);
+
+    if (hours > 0) {
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(2, '0')}`;
+  };
 
   const formatDate = () => time.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase()
 
@@ -1042,16 +1071,16 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
             { id: '2', title: 'Lunch Break', time: '12:30 PM', color: '#10b981' },
             { id: '3', title: 'Team Sync', time: '03:00 PM', color: '#8b5cf6' },
           ]}
-          focusStats={{
-            tasksCompleted: stats.tasksCompleted,
-            focusTimeToday: Math.round(stats.focusTime * 10) / 10,
-            productivity: stats.productivity
-          }}
           notifications={tasks.filter(t => !t.completed).slice(0, 3).map((t: Task) => ({
             id: t.id,
             title: t.text,
             time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
           }))}
+          pendingTasks={tasks.filter(t => !t.completed).slice(0, 6)}
+          timerActive={timerActive}
+          timerTime={formatTime(timerSeconds)}
+          stopwatchActive={stopwatchRunning}
+          stopwatchTime={formatStopwatchTime(stopwatchTime)}
         />
       )}
 
@@ -1637,7 +1666,7 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
               </button>
             </div>
 
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', textAlign: 'center', marginTop: 30, padding: '16px 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}>FocusOS v2.0 • Built with ❤️ for {userName}</div>
+
           </div>
         </>
       )}
