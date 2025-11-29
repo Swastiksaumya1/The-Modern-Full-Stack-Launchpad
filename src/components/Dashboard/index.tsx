@@ -84,7 +84,11 @@ const AVATARS = [
   { id: 'rockstar', emoji: '🎸', label: 'Rockstar' },
 ]
 
-export default function Dashboard() {
+interface DashboardProps {
+  editMode?: boolean;
+}
+
+export default function Dashboard({ editMode = false }: DashboardProps) {
   // ============================================================================
   // AUTH
   // ============================================================================
