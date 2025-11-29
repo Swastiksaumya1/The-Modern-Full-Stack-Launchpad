@@ -1066,12 +1066,8 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
       </div>
 
       {/* Menu Bar */}
-      <header style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 44, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 50 }}>
+      <header style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 44, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 40 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: accent.primary, fontWeight: 600, fontSize: 15 }}>
-            <LayoutGrid size={18} />
-            <span>FocusOS</span>
-          </div>
           <span style={{ color: 'rgba(255,255,255,0.2)' }}>|</span>
           {['File', 'View', 'Window'].map(item => (
             <span key={item} style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: '4px 8px', borderRadius: 4 }}>{item}</span>
@@ -1092,7 +1088,7 @@ export default function Dashboard({ editMode: _editMode = false }: DashboardProp
           <Volume2 size={15} style={{ opacity: 0.6 }} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.6, fontSize: 12 }}><Battery size={15} /> 100%</div>
           <span style={{ fontSize: 13, fontWeight: 500 }}>{formatTime12()}</span>
-          <button onClick={() => setIsLocked(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 8px', borderRadius: 6, color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'all 0.2s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'white' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }} title="Lock screen (Cmd+L)"><Lock size={16} /></button>
+          <button onClick={() => setIsLocked(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '6px 12px', borderRadius: 6, color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'all 0.2s', border: 'none', background: 'transparent' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'white' }} onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }} title="Lock screen (Cmd+L)"><Lock size={16} style={{ marginRight: 4 }} /> Lock</button>
           <div onClick={() => setShowSettings(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.1)', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}>
             <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(135deg, ${accent.primary}, ${accent.secondary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>
               {AVATARS.find(a => a.id === selectedAvatar)?.emoji || '👨‍🚀'}
